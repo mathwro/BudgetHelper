@@ -82,6 +82,7 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_USE_OIDC: true
+          TF_IN_AUTOMATION: true
       
       - name: Terraform Validate
         id: validate
@@ -99,6 +100,7 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_USE_OIDC: true
+          TF_IN_AUTOMATION: true
           TF_VAR_environment: ${{ github.event.inputs.environment || 'prod' }}
           TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           TF_VAR_ENV_Variables: '{"VITE_GOOGLE_CLIENT_ID":"${{ secrets.VITE_GOOGLE_CLIENT_ID }}"}'
@@ -113,6 +115,7 @@ jobs:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_USE_OIDC: true
+          TF_IN_AUTOMATION: true
       
       - name: Terraform Destroy
         if: |
@@ -124,6 +127,7 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_USE_OIDC: true
+          TF_IN_AUTOMATION: true
           TF_VAR_environment: ${{ github.event.inputs.environment || 'prod' }}
           TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       

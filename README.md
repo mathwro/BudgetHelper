@@ -84,6 +84,21 @@ npm run test:watch   # Run tests in watch mode
 npm run test:coverage  # Run tests with coverage report
 ```
 
+## Subsite artifact for mwrobel.io
+
+This repository includes a workflow that builds BudgetHelper for subpath hosting and publishes a GitHub artifact:
+
+- Workflow: `.github/workflows/build-subsite-artifact.yml`
+- Artifact name: `budget-helper-subsite`
+- Build base path: `/projects/budget-helper/`
+
+Artifact contents:
+
+- `projects/budget-helper/**` (ready to copy into the main site's published static root)
+- `build-info.json` (source commit/run metadata)
+
+The main site deployment can download this artifact and merge it into its output before deploying to Azure Static Web Apps.
+
 ## Running the tests
 
 The test suite uses [Vitest](https://vitest.dev/) with [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) and [jsdom](https://github.com/jsdom/jsdom).

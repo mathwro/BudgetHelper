@@ -63,7 +63,7 @@ const ITEM_PRESETS = {
   ],
 }
 
-export default function BudgetWizard({ canClose, onComplete, onClose }) {
+export default function BudgetWizard({ canClose, onComplete, onClose, onCreateBlank, onPullFromGoogle }) {
   const currentYear = new Date().getFullYear()
   const [step, setStep] = useState(1)
 
@@ -238,6 +238,26 @@ export default function BudgetWizard({ canClose, onComplete, onClose }) {
                   />
                 </div>
               </div>
+              {(onCreateBlank || onPullFromGoogle) && (
+                <div className="wizard-quick-actions">
+                  {onCreateBlank && (
+                    <button
+                      className="btn btn-outline"
+                      onClick={() => onCreateBlank({ name: budgetName, year: budgetYear })}
+                    >
+                      Create blank budget
+                    </button>
+                  )}
+                  {onPullFromGoogle && (
+                    <button
+                      className="btn btn-outline"
+                      onClick={() => onPullFromGoogle({ name: budgetName, year: budgetYear })}
+                    >
+                      Pull from Google Sheet
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

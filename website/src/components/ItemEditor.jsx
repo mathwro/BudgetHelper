@@ -37,7 +37,10 @@ export default function ItemEditor({ sectionId, item, dispatch, onClose, onCance
   const [savingsLink, setSavingsLink] = useState(item.savingsLink || null)
   // Savings items: percentage mode
   const [percentageMode, setPercentageMode] = useState(item.savingsPercentage != null)
-  const [savingsPct, setSavingsPct] = useState(item.savingsPercentage ?? '')
+  const [savingsPct, setSavingsPct] = useState(
+    item.savingsPercentage != null ? String(item.savingsPercentage).replace('.', ',') : ''
+  )
+  const [monthDrafts, setMonthDrafts] = useState({})
 
   const isSavingsSection = section?.type === 'savings'
   const isExpenseSection = section?.type === 'expense' || section?.type === 'income'
@@ -52,7 +55,7 @@ export default function ItemEditor({ sectionId, item, dispatch, onClose, onCance
     const updates = { name: name.trim(), color, note }
 
     if (isSavingsSection) {
-      updates.savingsPercentage = percentageMode && savingsPct !== '' ? Number(savingsPct) : null
+      updates.savingsPercentage = percentageMode && savingsPct !== '' ? parseVal(savingsPct) : null
     } else {
       updates.excluded = excluded
       updates.negative = negative
@@ -82,6 +85,10 @@ export default function ItemEditor({ sectionId, item, dispatch, onClose, onCance
   }
 
   function handleMonthChange(index, raw) {
+    setMonthDrafts(prev => ({ ...prev, [index]: raw }))
+  }
+
+  function commitMonthChange(index, raw) {
     const value = parseVal(raw)
     const newValues = [...item.monthlyValues]
     newValues[index] = value
@@ -90,6 +97,11 @@ export default function ItemEditor({ sectionId, item, dispatch, onClose, onCance
       sectionId,
       itemId: item.id,
       updates: { monthlyValues: newValues },
+    })
+    setMonthDrafts(prev => {
+      const next = { ...prev }
+      delete next[index]
+      return next
     })
   }
 
@@ -235,10 +247,8 @@ export default function ItemEditor({ sectionId, item, dispatch, onClose, onCance
                 <label>Percentage of {linkedItemForSavings.name}</label>
                 <div className="bulk-fill-row">
                   <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.1}
+                    type="text"
+                    inputMode="decimal"
                     value={savingsPct}
                     onChange={e => setSavingsPct(e.target.value)}
                     placeholder="e.g. 10"
@@ -251,7 +261,7 @@ export default function ItemEditor({ sectionId, item, dispatch, onClose, onCance
                 <div className="monthly-grid">
                   {months.map((m, i) => {
                     const base = Number(linkedItemForSavings.monthlyValues[i]) || 0
-                    const computed = base * (Number(savingsPct) || 0) / 100
+                    const computed = base * parseVal(savingsPct) / 100
                     return (
                       <div key={i} className="month-input-cell">
                         <span className="month-label">{m}</span>
@@ -293,8 +303,16 @@ export default function ItemEditor({ sectionId, item, dispatch, onClose, onCance
                       <input
                         type="text"
                         inputMode="decimal"
-                        value={item.monthlyValues[i] === 0 ? '' : String(item.monthlyValues[i]).replace('.', ',')}
+                        value={monthDrafts[i] ?? (item.monthlyValues[i] === 0 ? '' : String(item.monthlyValues[i]).replace('.', ','))}
                         onChange={e => handleMonthChange(i, e.target.value)}
+                        onBlur={e => commitMonthChange(i, e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            commitMonthChange(i, e.currentTarget.value)
+                            e.currentTarget.blur()
+                          }
+                        }}
                         placeholder="0"
                       />
                     </div>

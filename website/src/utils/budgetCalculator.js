@@ -47,12 +47,13 @@ export function computeMonthlyAverage(annualTotal) {
 }
 
 /**
- * Returns { incomeTotals, expenseTotals, remainingTotals }
+ * Returns { incomeTotals, expenseTotals, savingsTotals, remainingTotals }
  * where each is an Array[12] of monthly values.
  */
 export function computeBudgetSummary(sections) {
   const incomeTotals = Array(12).fill(0)
   const expenseTotals = Array(12).fill(0)
+  const savingsTotals = Array(12).fill(0)
 
   for (const section of sections) {
     if (section.type === 'income') {
@@ -61,11 +62,14 @@ export function computeBudgetSummary(sections) {
     } else if (section.type === 'expense') {
       const totals = computeSectionTotals(section)
       for (let m = 0; m < 12; m++) expenseTotals[m] += totals[m]
+    } else if (section.type === 'savings') {
+      const totals = computeSectionTotals(section, sections)
+      for (let m = 0; m < 12; m++) savingsTotals[m] += totals[m]
     }
   }
 
   const remainingTotals = incomeTotals.map((inc, m) => inc - expenseTotals[m])
-  return { incomeTotals, expenseTotals, remainingTotals }
+  return { incomeTotals, expenseTotals, savingsTotals, remainingTotals }
 }
 
 /**

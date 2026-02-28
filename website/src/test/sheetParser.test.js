@@ -93,6 +93,42 @@ function buildMockSheetRows(budget, overrides = {}) {
   return rows
 }
 
+function buildLegacySheetRows(budget, overrides = {}) {
+  // Legacy layout (before section-header rows): header, items, totals, separators, summary rows
+  // For simpleBudget():
+  // 1 header, 2 salary, 3 total inc, 4 sep, 5 rent, 6 food, 7 total exp, 8 sep, 9 remaining, 10 running, 11 sep
+  const rows = Array.from({ length: 11 }, () => Array(16).fill(''))
+  rows[0] = ['', 'Januar', 'Februar', 'Marts', 'April', 'Maj', 'Juni',
+    'Juli', 'August', 'September', 'Oktober', 'November', 'December',
+    'Total', 'Gns./måned', 'Noter']
+
+  const salary = budget.sections[0].items[0]
+  rows[1][0] = salary.name
+  for (let m = 0; m < 12; m++) rows[1][1 + m] = Number(salary.monthlyValues[m]) || 0
+  rows[1][15] = salary.note || ''
+
+  const rent = budget.sections[1].items[0]
+  rows[4][0] = rent.name
+  for (let m = 0; m < 12; m++) rows[4][1 + m] = Number(rent.monthlyValues[m]) || 0
+  rows[4][15] = rent.note || ''
+
+  const food = budget.sections[1].items[1]
+  rows[5][0] = food.name
+  for (let m = 0; m < 12; m++) rows[5][1 + m] = Number(food.monthlyValues[m]) || 0
+  rows[5][15] = food.note || ''
+
+  for (const [rowIdx, rowData] of Object.entries(overrides)) {
+    const idx = Number(rowIdx) - 1
+    if (idx >= 0 && idx < rows.length) {
+      for (const [col, val] of Object.entries(rowData)) {
+        rows[idx][Number(col)] = val
+      }
+    }
+  }
+
+  return rows
+}
+
 // ── parseSheetData — no changes ──────────────────────────────────────────────
 
 describe('parseSheetData — no changes', () => {
@@ -173,6 +209,49 @@ describe('parseSheetData — value changes', () => {
     const valueChanges = changes.filter(c => c.type === 'value')
     expect(valueChanges.length).toBe(3)
   })
+
+  it('maps rows correctly from legacy exported sheet layout', () => {
+    const budget = simpleBudget()
+    const sheetRows = buildLegacySheetRows(budget, {
+      2: { 1: 55000 },  // Salary Jan
+      5: { 1: 16000 },  // Rent Jan
+      6: { 1: 6000 },   // Food Jan
+    })
+
+    const { updatedBudget } = parseSheetData(budget, sheetRows)
+    expect(updatedBudget.sections[0].items[0].monthlyValues[0]).toBe(55000)
+    expect(updatedBudget.sections[1].items[0].monthlyValues[0]).toBe(16000)
+    expect(updatedBudget.sections[1].items[1].monthlyValues[0]).toBe(6000)
+  })
+
+  it('handles item names that start with "Total"', () => {
+    const budget = {
+      ...simpleBudget(),
+      sections: [
+        makeSection('inc', 'income', [
+          makeItem('i1', { name: 'Total salary', monthlyValues: Array(12).fill(50000) }),
+        ]),
+        makeSection('exp', 'expense', [
+          makeItem('i2', { name: 'Rent', monthlyValues: Array(12).fill(15000) }),
+          makeItem('i3', { name: 'Food', monthlyValues: Array(12).fill(5000) }),
+        ]),
+        makeSection('sum', 'summary', [], { showTotal: false }),
+      ],
+    }
+    const sheetRows = buildMockSheetRows(budget)
+    const { changes } = parseSheetData(budget, sheetRows)
+    expect(changes).toHaveLength(0)
+  })
+
+  it('falls back safely when sheet layout is unsupported', () => {
+    const budget = simpleBudget()
+    const sheetRows = buildMockSheetRows(budget)
+    // Blank out item rows for both supported layout variants
+    ;[2, 3, 5, 6, 7, 8].forEach(r => { sheetRows[r - 1] = Array(16).fill('') })
+    const { changes, updatedBudget } = parseSheetData(budget, sheetRows)
+    expect(changes.length).toBe(0)
+    expect(updatedBudget.sections[0].items[0].monthlyValues[0]).toBe(50000)
+  })
 })
 
 // ── parseSheetData — name changes ────────────────────────────────────────────
@@ -243,8 +322,9 @@ describe('parseSheetData — note changes', () => {
       ],
     }
 
+    const { itemRowMap } = buildRowLayout(budget)
     const sheetRows = buildMockSheetRows(budget, {
-      2: { 15: '' },  // Note cleared
+      [itemRowMap['i1']]: { 15: '' },  // Note cleared
     })
 
     const { updatedBudget, changes } = parseSheetData(budget, sheetRows)
@@ -318,6 +398,89 @@ describe('parseSheetData — savings sections', () => {
     const { updatedBudget, changes } = parseSheetData(budget, sheetRows)
     expect(changes.filter(c => c.type === 'value').length).toBe(1)
     expect(updatedBudget.sections[2].items[0].monthlyValues[0]).toBe(750)
+  })
+})
+
+// ── parseSheetData — marker rebuild ───────────────────────────────────────────
+
+describe('parseSheetData — marker rebuild', () => {
+  it('applies section colors from marker row background colors', () => {
+    const budget = simpleBudget()
+    const rows = Array.from({ length: 10 }, () => Array(17).fill(''))
+    rows[0] = ['', 'Januar', 'Februar', 'Marts', 'April', 'Maj', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'December', 'Total', 'Gns./måned', 'Noter', '']
+    rows[1][0] = 'Income'
+    rows[1][16] = '__BH_SECTION__:inc:income'
+    rows[2][0] = 'Salary'
+    rows[2][1] = 50000
+    rows[3][0] = 'Total income'
+    rows[3][16] = '__BH_TOTAL__:inc'
+    rows[5][0] = 'Expenses'
+    rows[5][16] = '__BH_SECTION__:exp:expense'
+    rows[6][0] = 'Rent'
+    rows[6][1] = 15000
+    rows[7][0] = 'Total expenses'
+    rows[7][16] = '__BH_TOTAL__:exp'
+    rows[8][0] = 'Tilbage'
+
+    const rowColors = { 2: '#2d8050', 6: '#b37520' }
+    const { updatedBudget } = parseSheetData(budget, rows, rowColors)
+    expect(updatedBudget.sections[0].color).toBe('#2d8050')
+    expect(updatedBudget.sections[1].color).toBe('#b37520')
+  })
+
+  it('does not import section total rows as items', () => {
+    const budget = simpleBudget()
+    const rows = Array.from({ length: 10 }, () => Array(17).fill(''))
+    rows[0] = ['', 'Januar', 'Februar', 'Marts', 'April', 'Maj', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'December', 'Total', 'Gns./måned', 'Noter', '']
+    rows[1][0] = 'Income'
+    rows[1][16] = '__BH_SECTION__:inc:income'
+    rows[2][0] = 'Salary'
+    rows[2][1] = 50000
+    rows[3][0] = 'Total income'
+    rows[3][1] = 50000
+    rows[3][16] = '__BH_TOTAL__:inc'
+    rows[5][0] = 'Expenses'
+    rows[5][16] = '__BH_SECTION__:exp:expense'
+    rows[6][0] = 'Rent'
+    rows[6][1] = 15000
+    rows[7][0] = 'Total expenses'
+    rows[7][1] = 15000
+    rows[7][16] = '__BH_TOTAL__:exp'
+    rows[8][0] = 'Tilbage'
+
+    const { updatedBudget } = parseSheetData(budget, rows)
+    expect(updatedBudget.sections[0].items.map(i => i.name)).toEqual(['Salary'])
+    expect(updatedBudget.sections[1].items.map(i => i.name)).toEqual(['Rent'])
+  })
+
+  it('rebuilds savingsLink from savings auto-row label', () => {
+    const budget = simpleBudget()
+    const rows = Array.from({ length: 14 }, () => Array(17).fill(''))
+    rows[0] = ['', 'Januar', 'Februar', 'Marts', 'April', 'Maj', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'December', 'Total', 'Gns./måned', 'Noter', '']
+    rows[1][0] = 'Income'
+    rows[1][16] = '__BH_SECTION__:inc:income'
+    rows[2][0] = 'Salary'
+    rows[2][1] = 50000
+    rows[3][0] = 'Total income'
+    rows[3][16] = '__BH_TOTAL__:inc'
+    rows[5][0] = 'Expenses'
+    rows[5][16] = '__BH_SECTION__:exp:expense'
+    rows[6][0] = 'Rent'
+    rows[6][1] = 15000
+    rows[7][0] = 'Total expenses'
+    rows[7][16] = '__BH_TOTAL__:exp'
+    rows[9][0] = 'Savings'
+    rows[9][16] = '__BH_SECTION__:sav:savings'
+    rows[10][0] = '← Rent'
+    rows[11][0] = 'Emergency fund'
+    rows[11][1] = 1000
+    rows[12][0] = 'Total savings'
+    rows[12][16] = '__BH_TOTAL__:sav'
+
+    const { updatedBudget } = parseSheetData(budget, rows)
+    const expenseSection = updatedBudget.sections.find(s => s.type === 'expense')
+    const rent = expenseSection.items.find(i => i.name === 'Rent')
+    expect(rent.savingsLink).toBe('sav')
   })
 })
 

@@ -73,3 +73,32 @@ export async function getValues(spreadsheetId, range, accessToken) {
   )
   return data.values || []
 }
+
+/**
+ * Read effective background colors for rows in the first sheet.
+ * Returns a map: { [rowIndex1Based]: '#rrggbb' }.
+ */
+export async function getRowBackgroundColors(spreadsheetId, accessToken) {
+  const data = await apiFetch(
+    `${BASE}/${spreadsheetId}?ranges=A:P&includeGridData=true&fields=sheets(data.rowData.values.effectiveFormat.backgroundColor)`,
+    { method: 'GET' },
+    accessToken
+  )
+
+  const rowData = data?.sheets?.[0]?.data?.[0]?.rowData || []
+  const colors = {}
+
+  function toHex(v) {
+    const n = Math.max(0, Math.min(255, Math.round((v ?? 1) * 255)))
+    return n.toString(16).padStart(2, '0')
+  }
+
+  for (let i = 0; i < rowData.length; i++) {
+    const bg = rowData[i]?.values?.[0]?.effectiveFormat?.backgroundColor
+    if (!bg) continue
+    const hex = `#${toHex(bg.red)}${toHex(bg.green)}${toHex(bg.blue)}`
+    colors[i + 1] = hex
+  }
+
+  return colors
+}

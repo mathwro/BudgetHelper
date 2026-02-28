@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { createDefaultBudget } from './utils/defaultBudget.js'
+import { generateBudget } from './utils/generateBudget.js'
 import { reducer } from './utils/budgetReducer.js'
 import { useUndoReducer } from './utils/useUndoReducer.js'
 import Header from './components/Header.jsx'
@@ -159,6 +160,23 @@ export default function App() {
     setAllBudgetsMeta(budgetsMeta(store))
     setShowWizard(false)
     setShowBudgetPicker(false)
+  }
+
+  function handleCreateBlankBudget({ name, year }) {
+    const budgetYear = Number(year) || new Date().getFullYear()
+    const blankBudget = generateBudget({
+      name: name || '',
+      year: budgetYear,
+      selectedSections: [],
+      selectedItems: {},
+      incomeItems: [],
+    })
+    handleCreateBudget(blankBudget)
+  }
+
+  function handlePullFromGoogle({ name, year }) {
+    handleCreateBlankBudget({ name, year })
+    setShowSyncModal(true)
   }
 
   function handleDeleteBudget(id) {
@@ -332,6 +350,8 @@ export default function App() {
         <BudgetWizard
           canClose={allBudgetsMeta.length > 0}
           onComplete={handleCreateBudget}
+          onCreateBlank={handleCreateBlankBudget}
+          onPullFromGoogle={handlePullFromGoogle}
           onClose={() => setShowWizard(false)}
         />
       )}

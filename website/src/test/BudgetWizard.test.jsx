@@ -7,12 +7,16 @@ import BudgetWizard from '../components/BudgetWizard'
 function renderWizard(props = {}) {
   const onComplete = props.onComplete ?? vi.fn()
   const onClose = props.onClose ?? vi.fn()
+  const onCreateBlank = props.onCreateBlank
+  const onPullFromGoogle = props.onPullFromGoogle
   const canClose = props.canClose ?? false
   render(
     <BudgetWizard
       canClose={canClose}
       onComplete={onComplete}
       onClose={onClose}
+      onCreateBlank={onCreateBlank}
+      onPullFromGoogle={onPullFromGoogle}
     />
   )
   return { onComplete, onClose }
@@ -301,6 +305,34 @@ describe('BudgetWizard', () => {
       )
       await user.click(screen.getByTitle('Close'))
       expect(onClose).toHaveBeenCalledOnce()
+    })
+  })
+
+  describe('step 1 quick actions', () => {
+    it('shows quick action buttons when callbacks are provided', () => {
+      renderWizard({ onCreateBlank: vi.fn(), onPullFromGoogle: vi.fn() })
+      expect(screen.getByRole('button', { name: /create blank budget/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /pull from google sheet/i })).toBeInTheDocument()
+    })
+
+    it('calls onCreateBlank with current name and year', async () => {
+      const user = userEvent.setup()
+      const onCreateBlank = vi.fn()
+      renderWizard({ onCreateBlank })
+      const year = new Date().getFullYear()
+      await user.type(screen.getByRole('textbox'), 'My Blank Budget')
+      await user.click(screen.getByRole('button', { name: /create blank budget/i }))
+      expect(onCreateBlank).toHaveBeenCalledWith({ name: 'My Blank Budget', year })
+    })
+
+    it('calls onPullFromGoogle with current name and year', async () => {
+      const user = userEvent.setup()
+      const onPullFromGoogle = vi.fn()
+      renderWizard({ onPullFromGoogle })
+      const year = new Date().getFullYear()
+      await user.type(screen.getByRole('textbox'), 'Imported Budget')
+      await user.click(screen.getByRole('button', { name: /pull from google sheet/i }))
+      expect(onPullFromGoogle).toHaveBeenCalledWith({ name: 'Imported Budget', year })
     })
   })
 })

@@ -52,20 +52,25 @@ describe('buildRowLayout — basic layout', () => {
     expect(rowLayout[0]).toMatchObject({ type: 'header', rowIndex: 1 })
   })
 
-  it('income item starts at row 2', () => {
-    const { itemRowMap } = buildRowLayout(simpleBudget())
-    expect(itemRowMap['i1']).toBe(2)
+  it('adds a section-header row before items', () => {
+    const { rowLayout } = buildRowLayout(simpleBudget())
+    const sectionHeader = rowLayout.find(r => r.type === 'section-header' && r.section.id === 'inc')
+    expect(sectionHeader?.rowIndex).toBe(2)
   })
 
-  it('income total row is at row 3 (immediately after item)', () => {
+  it('income item starts at row 3', () => {
+    const { itemRowMap } = buildRowLayout(simpleBudget())
+    expect(itemRowMap['i1']).toBe(3)
+  })
+
+  it('income total row is at row 4 (immediately after item)', () => {
     const { incomeTotalRows } = buildRowLayout(simpleBudget())
-    expect(incomeTotalRows).toEqual([3])
+    expect(incomeTotalRows).toEqual([4])
   })
 
-  it('expense item is at row 5 (after income total + separator)', () => {
-    // row 4 = separator, row 5 = expense item
+  it('expense item is at row 7 (after expense section header)', () => {
     const { itemRowMap } = buildRowLayout(simpleBudget())
-    expect(itemRowMap['i2']).toBe(5)
+    expect(itemRowMap['i2']).toBe(7)
   })
 
   it('expense total is in expenseTotalRows', () => {
@@ -278,6 +283,22 @@ describe('buildRowLayout — running balance row', () => {
 // ── generateSheetsPayload — running balance formulas ────────────────────────────
 
 describe('generateSheetsPayload — running balance formulas', () => {
+  it('writes section marker token in hidden metadata column on section-header rows', () => {
+    const { valueRanges } = generateSheetsPayload(simpleBudget())
+    const sectionHeader = valueRanges.find(r => r.values[0][0] === 'Section inc')
+    expect(sectionHeader).toBeTruthy()
+    expect(String(sectionHeader.values[0][16])).toMatch(/^__BH_SECTION__:/)
+    expect(sectionHeader.values[0][15]).toBe('')
+  })
+
+  it('includes total expenses and total savings summary rows', () => {
+    const { valueRanges } = generateSheetsPayload(simpleBudget())
+    const expenses = valueRanges.find(r => r.values[0][0] === 'Total expenses')
+    const savings = valueRanges.find(r => r.values[0][0] === 'Total savings')
+    expect(expenses).toBeTruthy()
+    expect(savings).toBeTruthy()
+  })
+
   it('running balance row label is Løbende saldo', () => {
     const { valueRanges } = generateSheetsPayload(simpleBudget())
     const rb = valueRanges.find(r => r.values[0][0] === 'Løbende saldo')

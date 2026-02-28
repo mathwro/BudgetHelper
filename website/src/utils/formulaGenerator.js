@@ -15,6 +15,9 @@ const COL_DEC = 12    // M
 const COL_ANNUAL = 13 // N
 const COL_AVG = 14    // O
 const COL_NOTES = 15  // P
+const COL_META = 16   // Q
+const SECTION_MARKER_PREFIX = '__BH_SECTION__:'
+const TOTAL_MARKER_PREFIX = '__BH_TOTAL__:'
 
 function colLetter(colIndex) {
   // colIndex is 0-based
@@ -35,10 +38,10 @@ function cellRef(row, col) {
 
 /**
  * Build the full row layout from the budget state.
- * Returns { rowLayout, incomeTotalRows, expenseTotalRows, itemRowMap }
+ * Returns { rowLayout, incomeTotalRows, expenseTotalRows, savingsTotalRows, itemRowMap }
  *
  * Each entry in rowLayout:
- *   { type: 'header'|'item'|'total'|'separator'|'remaining', ... }
+ *   { type: 'header'|'section-header'|'item'|'total'|'separator'|'remaining', ... }
  *
  * itemRowMap: { itemId -> rowIndex } for all item rows
  */
@@ -52,11 +55,26 @@ export function buildRowLayout(budget) {
 
   const incomeTotalRows = []
   const expenseTotalRows = []
+  const savingsTotalRows = []
   const itemRowMap = {}  // itemId -> rowIndex
 
   for (const section of budget.sections) {
     if (section.type === 'summary') {
-      // summary section: will add remaining row here
+      // summary section: add rollup rows + remaining/running balance
+      rowLayout.push({
+        type: 'expense-grand-total',
+        rowIndex: row,
+        section,
+        color: section.color,
+      })
+      row++
+      rowLayout.push({
+        type: 'savings-grand-total',
+        rowIndex: row,
+        section,
+        color: section.color,
+      })
+      row++
       rowLayout.push({
         type: 'remaining',
         rowIndex: row,
@@ -76,6 +94,14 @@ export function buildRowLayout(budget) {
       row++
       continue
     }
+
+    rowLayout.push({
+      type: 'section-header',
+      rowIndex: row,
+      section,
+      color: section.color,
+    })
+    row++
 
     // For savings sections: insert an auto-row before items if a linked expense item exists
     let autoRowIndex = null
@@ -102,7 +128,6 @@ export function buildRowLayout(budget) {
           section,
           linkedItemRow: itemRowMap[linkedItemId],
           linkedItemName,
-          color: section.color,
         })
         row++
       }
@@ -119,7 +144,7 @@ export function buildRowLayout(budget) {
         rowIndex: row,
         item,
         section,
-        color: item.color || section.color,
+        color: null,
       })
       row++
     }
@@ -136,12 +161,13 @@ export function buildRowLayout(budget) {
         itemEndRow,
         itemRowEntries,
         autoRowIndex,
-        color: section.color,
+        color: null,
       })
       row++
 
       if (section.type === 'income') incomeTotalRows.push(totalRow)
       if (section.type === 'expense') expenseTotalRows.push(totalRow)
+      if (section.type === 'savings') savingsTotalRows.push(totalRow)
       // savings sections: NOT added to expenseTotalRows
     } else if (section.showTotal && section.items.length === 0) {
       // Empty section still reserves a total row (value = 0)
@@ -154,11 +180,12 @@ export function buildRowLayout(budget) {
         itemEndRow: row - 1,
         itemRowEntries: [],
         autoRowIndex: null,
-        color: section.color,
+        color: null,
       })
       row++
       if (section.type === 'income') incomeTotalRows.push(totalRow)
       if (section.type === 'expense') expenseTotalRows.push(totalRow)
+      if (section.type === 'savings') savingsTotalRows.push(totalRow)
     }
 
     // Blank separator between sections
@@ -166,7 +193,7 @@ export function buildRowLayout(budget) {
     row++
   }
 
-  return { rowLayout, incomeTotalRows, expenseTotalRows, itemRowMap }
+  return { rowLayout, incomeTotalRows, expenseTotalRows, savingsTotalRows, itemRowMap }
 }
 
 /**
@@ -174,7 +201,7 @@ export function buildRowLayout(budget) {
  * Returns { valueRanges, formatRequests, sheetId }
  */
 export function generateSheetsPayload(budget, sheetId = 0) {
-  const { rowLayout, incomeTotalRows, expenseTotalRows, itemRowMap } = buildRowLayout(budget)
+  const { rowLayout, incomeTotalRows, expenseTotalRows, savingsTotalRows, itemRowMap } = buildRowLayout(budget)
 
   const allValues = []   // For values.batchUpdate
   const formatRequests = []  // For batchUpdate
@@ -184,10 +211,10 @@ export function generateSheetsPayload(budget, sheetId = 0) {
   if (headerRow) {
     const r = headerRow.rowIndex
     const headerValues = [
-      ['', ...MONTHS, 'Total', 'Gns./måned', 'Noter']
+      ['', ...MONTHS, 'Total', 'Gns./måned', 'Noter', '']
     ]
     allValues.push({
-      range: `${cellRef(r, COL_LABEL)}:${cellRef(r, COL_NOTES)}`,
+      range: `${cellRef(r, COL_LABEL)}:${cellRef(r, COL_META)}`,
       values: headerValues,
     })
   }
@@ -214,9 +241,23 @@ export function generateSheetsPayload(budget, sheetId = 0) {
       rowData.push(`=SUM(${cellRef(r, COL_JAN)}:${cellRef(r, COL_DEC)})`)
       rowData.push(`=${cellRef(r, COL_ANNUAL)}/12`)
       rowData.push(item.note || '')
+      rowData.push('')
 
       allValues.push({
-        range: `${cellRef(r, COL_LABEL)}:${cellRef(r, COL_NOTES)}`,
+        range: `${cellRef(r, COL_LABEL)}:${cellRef(r, COL_META)}`,
+        values: [rowData],
+      })
+    }
+
+    if (entry.type === 'section-header') {
+      const r = entry.rowIndex
+      const rowData = [entry.section.name]
+      for (let col = COL_JAN; col <= COL_META; col++) {
+        rowData.push('')
+      }
+      rowData[COL_META] = `${SECTION_MARKER_PREFIX}${entry.section.id}:${entry.section.type}`
+      allValues.push({
+        range: `${cellRef(r, COL_LABEL)}:${cellRef(r, COL_META)}`,
         values: [rowData],
       })
     }
@@ -233,9 +274,10 @@ export function generateSheetsPayload(budget, sheetId = 0) {
       rowData.push(`=SUM(${cellRef(r, COL_JAN)}:${cellRef(r, COL_DEC)})`)
       rowData.push(`=${cellRef(r, COL_ANNUAL)}/12`)
       rowData.push('')
+      rowData.push('')
 
       allValues.push({
-        range: `${cellRef(r, COL_LABEL)}:${cellRef(r, COL_NOTES)}`,
+        range: `${cellRef(r, COL_LABEL)}:${cellRef(r, COL_META)}`,
         values: [rowData],
       })
     }
@@ -296,9 +338,10 @@ export function generateSheetsPayload(budget, sheetId = 0) {
       rowData.push(`=SUM(${cellRef(r, COL_JAN)}:${cellRef(r, COL_DEC)})`)
       rowData.push(`=${cellRef(r, COL_ANNUAL)}/12`)
       rowData.push('')
+      rowData.push(`${TOTAL_MARKER_PREFIX}${entry.section.id}`)
 
       allValues.push({
-        range: `${cellRef(r, COL_LABEL)}:${cellRef(r, COL_NOTES)}`,
+        range: `${cellRef(r, COL_LABEL)}:${cellRef(r, COL_META)}`,
         values: [rowData],
       })
     }
@@ -325,9 +368,30 @@ export function generateSheetsPayload(budget, sheetId = 0) {
       rowData.push(`=SUM(${cellRef(r, COL_JAN)}:${cellRef(r, COL_DEC)})`)
       rowData.push(`=${cellRef(r, COL_ANNUAL)}/12`)
       rowData.push('')
+      rowData.push('')
 
       allValues.push({
-        range: `${cellRef(r, COL_LABEL)}:${cellRef(r, COL_NOTES)}`,
+        range: `${cellRef(r, COL_LABEL)}:${cellRef(r, COL_META)}`,
+        values: [rowData],
+      })
+    }
+
+    if (entry.type === 'expense-grand-total' || entry.type === 'savings-grand-total') {
+      const r = entry.rowIndex
+      const rowData = [entry.type === 'expense-grand-total' ? 'Total expenses' : 'Total savings']
+      const sourceRows = entry.type === 'expense-grand-total' ? expenseTotalRows : savingsTotalRows
+      for (let col = COL_JAN; col <= COL_DEC; col++) {
+        const colL = colLetter(col)
+        rowData.push(sourceRows.length > 0
+          ? `=${sourceRows.map(tr => `${colL}${tr}`).join('+')}`
+          : 0)
+      }
+      rowData.push(`=SUM(${cellRef(r, COL_JAN)}:${cellRef(r, COL_DEC)})`)
+      rowData.push(`=${cellRef(r, COL_ANNUAL)}/12`)
+      rowData.push('')
+      rowData.push('')
+      allValues.push({
+        range: `${cellRef(r, COL_LABEL)}:${cellRef(r, COL_META)}`,
         values: [rowData],
       })
     }
@@ -347,16 +411,46 @@ export function generateSheetsPayload(budget, sheetId = 0) {
       rowData.push('')
       rowData.push('')
       rowData.push('')
+      rowData.push('')
 
       allValues.push({
-        range: `${cellRef(r, COL_LABEL)}:${cellRef(r, COL_NOTES)}`,
+        range: `${cellRef(r, COL_LABEL)}:${cellRef(r, COL_META)}`,
         values: [rowData],
       })
     }
   }
 
   // ── Formatting ───────────────────────────────────────────────────────────────
-  const totalRows = rowLayout.filter(r => r.type === 'total' || r.type === 'remaining' || r.type === 'running-balance' || r.type === 'header')
+  const totalRows = rowLayout.filter(r =>
+    r.type === 'total' ||
+    r.type === 'section-header' ||
+    r.type === 'expense-grand-total' ||
+    r.type === 'savings-grand-total' ||
+    r.type === 'remaining' ||
+    r.type === 'running-balance' ||
+    r.type === 'header'
+  )
+  const lastRow = rowLayout[rowLayout.length - 1]?.rowIndex || 50
+
+  // Reset stale formatting from prior syncs (especially old background colors)
+  formatRequests.push({
+    repeatCell: {
+      range: {
+        sheetId,
+        startRowIndex: 0,
+        endRowIndex: lastRow,
+        startColumnIndex: COL_LABEL,
+        endColumnIndex: COL_META + 1,
+      },
+      cell: {
+        userEnteredFormat: {
+          backgroundColor: { red: 1, green: 1, blue: 1 },
+          textFormat: { bold: false },
+        },
+      },
+      fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat.bold',
+    },
+  })
 
   // Bold on total rows and header
   for (const entry of totalRows) {
@@ -367,7 +461,7 @@ export function generateSheetsPayload(budget, sheetId = 0) {
           startRowIndex: entry.rowIndex - 1,
           endRowIndex: entry.rowIndex,
           startColumnIndex: COL_LABEL,
-          endColumnIndex: COL_NOTES + 1,
+          endColumnIndex: COL_META + 1,
         },
         cell: {
           userEnteredFormat: {
@@ -381,8 +475,8 @@ export function generateSheetsPayload(budget, sheetId = 0) {
 
   // Background colors per section
   for (const entry of rowLayout) {
-    if (entry.type === 'separator' || entry.type === 'header') continue
-    const colorHex = entry.color || '#ffffff'
+    if (entry.type === 'separator' || entry.type === 'header' || !entry.color) continue
+    const colorHex = entry.color
     const rgb = hexToRgb(colorHex)
 
     formatRequests.push({
@@ -392,7 +486,7 @@ export function generateSheetsPayload(budget, sheetId = 0) {
           startRowIndex: entry.rowIndex - 1,
           endRowIndex: entry.rowIndex,
           startColumnIndex: COL_LABEL,
-          endColumnIndex: COL_NOTES + 1,
+          endColumnIndex: COL_META + 1,
         },
         cell: {
           userEnteredFormat: {
@@ -409,7 +503,6 @@ export function generateSheetsPayload(budget, sheetId = 0) {
   }
 
   // Number format on numeric columns (B-O)
-  const lastRow = rowLayout[rowLayout.length - 1]?.rowIndex || 50
   formatRequests.push({
     repeatCell: {
       range: {
@@ -435,6 +528,7 @@ export function generateSheetsPayload(budget, sheetId = 0) {
     { col: 13, width: 110 }, // N: Annual
     { col: 14, width: 110 }, // O: Avg
     { col: 15, width: 200 }, // P: Notes
+    { col: 16, width: 40 },  // Q: Meta
   ]
 
   for (const { col, width } of colWidths) {
@@ -451,6 +545,20 @@ export function generateSheetsPayload(budget, sheetId = 0) {
       },
     })
   }
+
+  // Hide metadata marker column from users
+  formatRequests.push({
+    updateDimensionProperties: {
+      range: {
+        sheetId,
+        dimension: 'COLUMNS',
+        startIndex: COL_META,
+        endIndex: COL_META + 1,
+      },
+      properties: { hiddenByUser: true },
+      fields: 'hiddenByUser',
+    },
+  })
 
   // Freeze header row
   formatRequests.push({

@@ -142,9 +142,10 @@ describe('computeBudgetSummary', () => {
     const sections = [
       makeSection({ type: 'savings', items: [makeItem({ monthlyValues: Array(12).fill(500) })] }),
     ]
-    const { incomeTotals, expenseTotals } = computeBudgetSummary(sections)
+    const { incomeTotals, expenseTotals, savingsTotals } = computeBudgetSummary(sections)
     expect(incomeTotals[0]).toBe(0)
     expect(expenseTotals[0]).toBe(0)
+    expect(savingsTotals[0]).toBe(500)
   })
 
   it('remaining = income - expense for each month', () => {

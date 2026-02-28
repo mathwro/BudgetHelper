@@ -10,9 +10,11 @@ function fmt(n) {
 }
 
 export default function BudgetTable({ budget, dispatch, onEditItem, sectionChartsCloseKey, allSections }) {
-  const { remainingTotals } = computeBudgetSummary(budget.sections)
+  const { expenseTotals, savingsTotals, remainingTotals } = computeBudgetSummary(budget.sections)
   const runningBalance = computeRunningBalance(budget.sections)
   const summarySection = budget.sections.find(s => s.type === 'summary')
+  const expenseAnnual = computeAnnualTotal(expenseTotals)
+  const savingsAnnual = computeAnnualTotal(savingsTotals)
   const remainingAnnual = computeAnnualTotal(remainingTotals)
   const remainingAccent = { boxShadow: `inset 4px 0 0 ${summarySection?.color || '#c8a96e'}` }
 
@@ -48,6 +50,26 @@ export default function BudgetTable({ budget, dispatch, onEditItem, sectionChart
           {summarySection && (
             <>
               <tr className="section-spacer"><td colSpan={17}></td></tr>
+              <tr className="total-row expense-summary-row">
+                <td className="col-label bold" style={remainingAccent}>Total Expenses</td>
+                {expenseTotals.map((v, i) => (
+                  <td key={i} className="col-month number">{fmt(v)}</td>
+                ))}
+                <td className="col-annual number bold">{fmt(expenseAnnual)}</td>
+                <td className="col-avg number">{fmt(computeMonthlyAverage(expenseAnnual))}</td>
+                <td className="col-notes"></td>
+                <td className="col-actions"></td>
+              </tr>
+              <tr className="total-row savings-summary-row">
+                <td className="col-label bold" style={remainingAccent}>Total Savings</td>
+                {savingsTotals.map((v, i) => (
+                  <td key={i} className="col-month number">{fmt(v)}</td>
+                ))}
+                <td className="col-annual number bold">{fmt(savingsAnnual)}</td>
+                <td className="col-avg number">{fmt(computeMonthlyAverage(savingsAnnual))}</td>
+                <td className="col-notes"></td>
+                <td className="col-actions"></td>
+              </tr>
               <tr className="total-row remaining-row">
                 <td className="col-label bold" style={remainingAccent}>Remaining</td>
                 {remainingTotals.map((v, i) => (

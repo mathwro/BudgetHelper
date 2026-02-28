@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { getAccessToken, clearTokenCache } from '../services/googleAuth.js'
 import { listBudgetSheets, createBudgetSheet, trashSheet, listFolders } from '../services/googleDrive.js'
-import { clearRange, batchUpdateValues, batchUpdateFormatting, getSpreadsheetInfo, getValues } from '../services/googleSheets.js'
+import { clearRange, batchUpdateValues, batchUpdateFormatting, getSpreadsheetInfo, getValues, getRowBackgroundColors } from '../services/googleSheets.js'
 import { generateSheetsPayload } from '../utils/formulaGenerator.js'
 import { parseSheetData, summarizeChanges } from '../utils/sheetParser.js'
 
@@ -181,7 +181,7 @@ export default function GoogleSyncModal({ budget, dispatch, onClose }) {
       const firstSheetId = info.sheets?.[0]?.properties?.sheetId ?? 0
 
       setStep(1)
-      await clearRange(selectedSheetId, 'A:P', t)
+      await clearRange(selectedSheetId, 'A:Q', t)
 
       const { valueRanges, formatRequests } = generateSheetsPayload(budget, firstSheetId)
 
@@ -218,10 +218,11 @@ export default function GoogleSyncModal({ budget, dispatch, onClose }) {
       await getSpreadsheetInfo(selectedSheetId, t)
 
       setStep(1)
-      const sheetRows = await getValues(selectedSheetId, 'A:P', t)
+      const sheetRows = await getValues(selectedSheetId, 'A:Q', t)
+      const rowColors = await getRowBackgroundColors(selectedSheetId, t)
 
       setStep(2)
-      const { updatedBudget, changes } = parseSheetData(budget, sheetRows)
+      const { updatedBudget, changes } = parseSheetData(budget, sheetRows, rowColors)
       const summary = summarizeChanges(changes)
 
       setPullChanges({ changes, updatedBudget, summary })
